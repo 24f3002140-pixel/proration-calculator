@@ -1,31 +1,32 @@
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def index():
+    return jsonify({"status": "ok"})
 
-@app.get("/")
-def home():
-    return jsonify({"status": "running"})
-
-
-@app.post("/charge")
+@app.route("/charge", methods=["POST"])
 def charge():
     data = request.get_json(force=True)
 
-    old_price = data["old_price"]
-    new_price = data["new_price"]
-    days_remaining = data["days_remaining"]
-    spec = data["spec"]
+    old_price = float(data["old_price"])
+    new_price = float(data["new_price"])
+    days_remaining = float(data["days_remaining"])
+    days_in_actual_month = float(data["days_in_actual_month"])
+
+    spec = str(data["spec"]).strip().lower()
 
     if spec == "v1":
-        divisor = 30
+        charge = (new_price - old_price) * (days_remaining / 30.0)
+    elif spec == "v2":
+        charge = (new_price - old_price) * (
+            days_remaining / days_in_actual_month
+        )
     else:
-        divisor = data["days_in_actual_month"]
+        return jsonify({"error": "invalid spec"}), 400
 
-    result = (new_price - old_price) * (days_remaining / divisor)
-
-    return jsonify({"charge": result})
-
+    return jsonify({"charge": round(charge, 10)})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
