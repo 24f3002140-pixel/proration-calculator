@@ -1,10 +1,9 @@
-from decimal import Decimal, InvalidOperation
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
 
-@app.get("/")
+@app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "status": "Proration API is running",
@@ -13,34 +12,52 @@ def home():
     })
 
 
-@app.post("/charge")
+@app.route("/charge", methods=["POST"])
 def calculate_charge():
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
-        return jsonify({"error": "Request body must be valid JSON"}), 400
+        return jsonify({"error": "Invalid JSON body"}), 400
 
     try:
-        old_price = Decimal(str(data["old_price"]))
-        new_price = Decimal(str(data["new_price"]))
-        days_remaining = Decimal(str(data["days_remaining"]))
-        days_in_actual_month = Decimal(str(data["days_in_actual_month"]))
+        old_price = float(data["old_price"])
+        new_price = float(data["new_price"])
+        days_remaining = float(data["days_remaining"])
         spec = str(data["spec"]).strip().lower()
-    except (KeyError, InvalidOperation, TypeError, ValueError):
-        return jsonify({"error": "Invalid or missing request fields"}), 400
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Invalid or missing fields"}), 400
+
+    price_difference = new_price - old_price
 
     if spec == "v1":
-        divisor = Decimal("30")
+        # v1 must always use exactly 30.
+        charge = price_difference * (days_remaining / 30.0)
+
     elif spec == "v2":
-        if days_in_actual_month == 0:
-            return jsonify({"error": "days_in_actual_month cannot be zero"}), 400
-        divisor = days_in_actual_month
+        try:
+            days_in_actual_month = float(data["days_in_actual_month"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({
+                "error": "Invalid days_in_actual_month"
+            }), 400
+
+        if days_in_actual_month <= 0:
+            return jsonify({
+                "error": "days_in_actual_month must be greater than zero"
+            }), 400
+
+        charge = price_difference * (
+            days_remaining / days_in_actual_month
+        )
+
     else:
-        return jsonify({"error": "spec must be v1 or v2"}), 400
+        return jsonify({
+            "error": "spec must be v1 or v2"
+        }), 400
 
-    charge = (new_price - old_price) * (days_remaining / divisor)
-
-    return jsonify({"charge": float(charge)})
+    return jsonify({
+        "charge": charge
+    })
 
 
 if __name__ == "__main__":
